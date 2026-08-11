@@ -163,9 +163,6 @@ function Item({ className, render, children, ...props }: ItemProps) {
     const card = scopeRef.current?.querySelector("[data-slot='card']");
     if (!card) return;
 
-    // dispatch custom event yang sudah didengarkan Card.Root, tapi
-    // beri tahu Card.Root untuk meng-animasikan rotateY (lihat card.tsx),
-    // bukan gsap.set langsung.
     card.dispatchEvent(
       new CustomEvent("card:reset", {
         detail: { duration: RESET_DURATION },
@@ -263,74 +260,96 @@ function Item({ className, render, children, ...props }: ItemProps) {
 
       let hasExceededBounds = false;
 
-      Draggable.create(current, {
-        type: "y,x",
-        bounds: viewport,
-        onDrag() {
-          gsap.to(current, {
-            rotate: this.x * 0.05,
-            duration: 0.1,
-            overwrite: "auto",
+      const mm = gsap.matchMedia();
+
+      mm.add(
+        {
+          mobile: "(max-width: 48rem)",
+          desktop: "(min-width: 48rem)",
+        },
+        (context) => {
+          const { mobile } = context.conditions as {
+            mobile: boolean;
+            desktop: boolean;
+          };
+
+          Draggable.create(current, {
+            type: "y,x",
+            bounds: mobile ? undefined : viewport,
+            onDrag() {
+              gsap.to(current, {
+                rotate: this.x * 0.05,
+                duration: 0.1,
+                overwrite: "auto",
+              });
+
+              const offsetWidth = mobile
+                ? current.offsetWidth / 4
+                : current.offsetWidth / 2;
+              const offsetHeigth = mobile
+                ? current.offsetHeight / 4
+                : current.offsetHeight / 2;
+
+              hasExceededBounds =
+                Math.abs(this.x) > offsetWidth ||
+                Math.abs(this.y) > offsetHeigth;
+
+              setDismissed(hasExceededBounds);
+            },
+            onDragStart() {
+              setDragging(true);
+
+              gsap.to(current, {
+                scale: 0.9,
+                duration: 0.3,
+                ease: "power2.out",
+              });
+            },
+            onDragEnd(this) {
+              setDragging(false);
+
+              const timeline = gsap.timeline();
+              timeline.to(current, { x: 0, y: 0, rotate: 0 }, 0);
+
+              if (hasExceededBounds) {
+                timeline.set(current, { zIndex: -100, immediateRender: true });
+                nextOffset();
+
+                const minIndex = Math.min(orders.length - 1, MAX_VISIBLE_STACK);
+                const currentScale = 1 - minIndex * MAX_DEPTH_SCALE;
+
+                timeline.fromTo(
+                  current,
+                  {
+                    autoAlpha: 0.95,
+                    scale: 0.65,
+                    ease: "sine.out(1)",
+                  },
+                  {
+                    scale: currentScale,
+                    autoAlpha: 1,
+                    ease: "bounce.in(1)",
+                    onStart: () => {
+                      card?.dispatchEvent(new CustomEvent("card:reset"));
+                      setDismissed(false);
+                    },
+                  },
+                );
+              } else {
+                timeline.to(
+                  current,
+                  {
+                    scale: 1,
+                    duration: 0.4,
+                    ease: "back.out(1.5)",
+                  },
+                  0,
+                );
+              }
+            },
           });
-
-          hasExceededBounds =
-            Math.abs(this.x) > current.offsetWidth / 2 ||
-            Math.abs(this.y) > current.offsetHeight / 2;
-
-          setDismissed(hasExceededBounds);
         },
-        onDragStart() {
-          setDragging(true);
-
-          gsap.to(current, {
-            scale: 0.9,
-            duration: 0.3,
-            ease: "power2.out",
-          });
-        },
-        onDragEnd(this) {
-          setDragging(false);
-
-          const timeline = gsap.timeline();
-          timeline.to(current, { x: 0, y: 0, rotate: 0 }, 0);
-
-          if (hasExceededBounds) {
-            timeline.set(current, { zIndex: -100, immediateRender: true });
-            nextOffset();
-
-            const minIndex = Math.min(orders.length - 1, MAX_VISIBLE_STACK);
-            const currentScale = 1 - minIndex * MAX_DEPTH_SCALE;
-
-            timeline.fromTo(
-              current,
-              {
-                autoAlpha: 0.95,
-                scale: 0.65,
-                ease: "sine.out(1)",
-              },
-              {
-                scale: currentScale,
-                autoAlpha: 1,
-                ease: "bounce.in(1)",
-                onStart: () => {
-                  card?.dispatchEvent(new CustomEvent("card:reset"));
-                  setDismissed(false);
-                },
-              },
-            );
-          } else {
-            timeline.to(
-              current,
-              {
-                scale: 1,
-                duration: 0.4,
-                ease: "back.out(1.5)",
-              },
-              0,
-            );
-          }
-        },
-      });
+      );
     },
     { scope: scopeRef, dependencies: [firstIndex, orders.length] },
   );
