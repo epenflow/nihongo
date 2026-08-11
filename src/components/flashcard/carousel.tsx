@@ -276,6 +276,7 @@ function Item({ className, render, children, ...props }: ItemProps) {
           Draggable.create(current, {
             type: "y,x",
             bounds: mobile ? undefined : viewport,
+            minimumMovement: mobile ? 10 : 3,
             onDrag() {
               gsap.to(current, {
                 rotate: this.x * 0.05,
